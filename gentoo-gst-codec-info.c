@@ -1,10 +1,12 @@
 /* GStreamer
  * Copyright (C) 2008 Sebastian Dröge <sebastian.droege@collabora.co.uk>
+ * Copyright (C) 2011 Mart Raudsepp <leio@gentoo.org>
  *
- * gst-codec-info.c: tool to print automatic codec installation info
- *                   for a given list of plugins
+ * gentoo-gst-codec-info.c: tool to print automatic codec installation info
+ *                          for a given list of plugins, customized for Gentoo
  *
- * Partially based on gst-inspect from gstreamer.
+ * Based on debian gstreamer0.10-dev gst-codec-info.c, which in turn
+ * partially based on gst-inspect from gstreamer.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -59,62 +61,67 @@ free_plugin_info (void)
 }
 
 static void
-print_plugin_info (void)
+set_key_file_values_from_list (GKeyFile *keyfile, GList *list, const gchar *package, const gchar *key)
 {
   GList *l;
+  guint i, len;
+  gchar **strs = NULL;
+
+  len = g_list_length (list);
+  strs = g_new (gchar *, len);
+
+  for (i = 0, l = list; l; l = l->next, i++) {
+    strs[i] = (gchar *) l->data;
+  }
+
+  g_key_file_set_string_list (keyfile, package, key,
+                              (const gchar **const) strs, len);
+
+  g_free (strs);
+}
+
+static void
+print_plugin_info (const gchar *package)
+{
+  GList *l;
+  int i;
+  GKeyFile *keyfile = g_key_file_new ();
 
   if (elements) {
-    g_print ("gstreamer:Elements=");
-    for (l = elements; l; l = l->next) {
-      if (l->next)
-        g_print ("%s, ", (gchar *) l->data);
-      else
-        g_print ("%s\n", (gchar *) l->data);
-    }
+    set_key_file_values_from_list (keyfile, elements, package, "Elements");
   }
 
   if (provides) {
-    g_print ("gstreamer:Provides=");
-    for (l = provides; l; l = l->next) {
-      if (l->next)
-        g_print ("%s, ", (gchar *) l->data);
-      else
-        g_print ("%s\n", (gchar *) l->data);
-    }
+    set_key_file_values_from_list (keyfile, provides, package, "Provides");
   }
 
   if (uri_sources) {
-    g_print ("gstreamer:URISources=");
-    for (l = uri_sources; l; l = l->next) {
-      if (l->next)
-        g_print ("%s, ", (gchar *) l->data);
-      else
-        g_print ("%s\n", (gchar *) l->data);
-    }
+    set_key_file_values_from_list (keyfile, uri_sources, package, "URISources");
   }
 
   if (uri_sinks) {
-    g_print ("gstreamer:URISinks=");
-    for (l = uri_sinks; l; l = l->next) {
-      if (l->next)
-        g_print ("%s, ", (gchar *) l->data);
-      else
-        g_print ("%s\n", (gchar *) l->data);
-    }
+    set_key_file_values_from_list (keyfile, uri_sinks, package, "URISinks");
   }
 
   if (!gst_caps_is_empty (encoders)) {
     gchar *caps = gst_caps_to_string (encoders);
 
-    g_print ("gstreamer:Encoders=%s\n", caps);
+    g_key_file_set_string (keyfile, package, "Encoders", caps);
     g_free (caps);
   }
 
   if (!gst_caps_is_empty (decoders)) {
     gchar *caps = gst_caps_to_string (decoders);
 
-    g_print ("gstreamer:Decoders=%s\n", caps);
+    g_key_file_set_string (keyfile, package, "Decoders", caps);
     g_free (caps);
+  }
+
+  {
+    gchar *keystr;
+    keystr = g_key_file_to_data (keyfile, NULL, NULL);
+    g_print ("%s", keystr);
+    g_free (keystr);
   }
 }
 
@@ -407,13 +414,13 @@ main (int argc, char **argv)
 
   gst_version (&major, &minor, &micro, &nano);
 
-  if (argc == 1)
+  if (argc == 1 || argc == 2)
     return 0;
 
   encoders = gst_caps_new_empty ();
   decoders = gst_caps_new_empty ();
 
-  for (i = 1; i < argc; i++) {
+  for (i = 2; i < argc; i++) {
     GstPlugin *plugin = NULL;
     GError *error = NULL;
 
@@ -435,11 +442,13 @@ main (int argc, char **argv)
     collect_plugin_info (plugin);
   }
 
+#if 0
   if (elements)
     g_print ("gstreamer:Version=%u.%u\n", major, minor);
+#endif
 
   cleanup_plugin_info ();
-  print_plugin_info ();
+  print_plugin_info (argv[1]);
   free_plugin_info ();
 
   return 0;
